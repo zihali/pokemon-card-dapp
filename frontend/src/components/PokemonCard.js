@@ -1,24 +1,75 @@
-
 import React, { useState } from "react";
 
-const PokemonCard = ({ signer, pokemonContract, marketplaceContract }) => {
-  const [mintURI, setMintURI] = useState("");
+const PokemonCard = ({ signer, pokemonContract }) => {
+  const [uri, setUri] = useState("");
   const [type, setType] = useState("");
   const [rarity, setRarity] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
 
   const mint = async () => {
-    const tx = await pokemonContract.mintCard(await signer.getAddress(), mintURI, type, rarity);
-    await tx.wait();
-    alert("Card minted!");
+    if (!signer || !pokemonContract) {
+      alert("Contract or wallet not loaded yet.");
+      return;
+    }
+
+    if (!uri || !type || !rarity) {
+      alert("Please fill in all fields.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setStatus("Waiting for MetaMask confirmation...");
+
+      const recipient = await signer.getAddress();
+      const tx = await pokemonContract.mintCard(recipient, uri, type, rarity);
+
+      setStatus("Minting... please wait for confirmation.");
+      await tx.wait();
+
+      setStatus("🎉 Card minted successfully!");
+      setUri("");
+      setType("");
+      setRarity("");
+    } catch (err) {
+      console.error(err);
+      setStatus("❌ Minting failed. See console for details.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div style={{ marginTop: "2rem" }}>
+    <div style={{ maxWidth: "400px" }}>
       <h2>Mint a Pokémon Card</h2>
-      <input placeholder="Token URI" onChange={(e) => setMintURI(e.target.value)} /><br />
-      <input placeholder="Type (e.g. Fire)" onChange={(e) => setType(e.target.value)} /><br />
-      <input placeholder="Rarity (e.g. Rare)" onChange={(e) => setRarity(e.target.value)} /><br />
-      <button onClick={mint}>Mint</button>
+      <input
+        type="text"
+        placeholder="Image URI"
+        value={uri}
+        onChange={(e) => setUri(e.target.value)}
+        style={{ width: "100%", marginBottom: "0.5rem" }}
+      />
+      <input
+        type="text"
+        placeholder="Type (e.g. Fire)"
+        value={type}
+        onChange={(e) => setType(e.target.value)}
+        style={{ width: "100%", marginBottom: "0.5rem" }}
+      />
+      <input
+        type="text"
+        placeholder="Rarity (e.g. Legendary)"
+        value={rarity}
+        onChange={(e) => setRarity(e.target.value)}
+        style={{ width: "100%", marginBottom: "0.5rem" }}
+      />
+
+      <button onClick={mint} disabled={loading} style={{ width: "100%" }}>
+        {loading ? "Minting..." : "Mint Card"}
+      </button>
+
+      {status && <p style={{ marginTop: "1rem" }}>{status}</p>}
     </div>
   );
 };

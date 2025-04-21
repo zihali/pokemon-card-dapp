@@ -1,7 +1,10 @@
-
 import React, { useEffect, useState } from "react";
 import { ethers } from "ethers";
-import PokemonCard from "./components/PokemonCard";
+import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import Home from "./components/Home";
+import Mint from "./components/Mint";
+import Market from "./components/Market";
+import Gallery from "./components/Gallery";
 import { pokemonCardAddress, marketplaceAddress, pokemonABI, marketplaceABI } from "./contracts";
 
 function App() {
@@ -33,15 +36,41 @@ function App() {
   }, []);
 
   return (
-    <div style={{ padding: "2rem" }}>
-      <h1>🎴 Pokémon NFT Marketplace</h1>
-      <p>Connected wallet: {account}</p>
-      <PokemonCard
-        signer={signer}
-        pokemonContract={pokemonContract}
-        marketplaceContract={marketplaceContract}
-      />
-    </div>
+    <Router>
+      <div style={{ padding: "1rem" }}>
+        <h1>🎴 Pokémon NFT Marketplace</h1>
+        <p>Connected wallet: {account}</p>
+        <nav style={{ marginBottom: "1rem" }}>
+          <Link to="/">Home</Link> |{" "}
+          <Link to="/mint">Mint</Link> |{" "}
+          <Link to="/market">Marketplace</Link> |{" "}
+          <Link to="/gallery">My Cards</Link>
+        </nav>
+
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/mint" element={
+            <Mint
+              signer={signer}
+              pokemonContract={pokemonContract}
+              marketplaceContract={marketplaceContract}
+            />
+          } />
+          <Route path="/market" element={
+            <Market
+              signer={signer}
+              marketplaceContract={marketplaceContract}
+            />
+          } />
+          <Route path="/gallery" element={
+            <Gallery
+              signer={signer}
+              pokemonContract={pokemonContract}
+            />
+          } />
+        </Routes>
+      </div>
+    </Router>
   );
 }
 
