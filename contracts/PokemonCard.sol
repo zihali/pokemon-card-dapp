@@ -1,3 +1,4 @@
+
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
@@ -9,35 +10,30 @@ contract PokemonCard is ERC721URIStorage, Ownable {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIds;
 
-    struct CardAttributes {
-        string name;
-        string pokemonType;
-        uint256 level;
-    }
-
-    mapping(uint256 => CardAttributes) public cardDetails;
-
-    event CardMinted(address indexed to, uint256 indexed tokenId, string name, string pokemonType, uint256 level);
+    mapping(uint256 => string) public pokemonType;
+    mapping(uint256 => string) public rarity;
 
     constructor() ERC721("PokemonCard", "PKMN") {}
 
     function mintCard(
         address recipient,
         string memory tokenURI,
-        string memory name,
-        string memory pokemonType,
-        uint256 level
+        string memory _type,
+        string memory _rarity
     ) public onlyOwner returns (uint256) {
         _tokenIds.increment();
-        uint256 newCardId = _tokenIds.current();
+        uint256 newItemId = _tokenIds.current();
 
-        _mint(recipient, newCardId);
-        _setTokenURI(newCardId, tokenURI);
+        _mint(recipient, newItemId);
+        _setTokenURI(newItemId, tokenURI);
 
-        cardDetails[newCardId] = CardAttributes(name, pokemonType, level);
+        pokemonType[newItemId] = _type;
+        rarity[newItemId] = _rarity;
 
-        emit CardMinted(recipient, newCardId, name, pokemonType, level);
+        return newItemId;
+    }
 
-        return newCardId;
+    function getCardInfo(uint256 tokenId) public view returns (string memory, string memory, string memory) {
+        return (tokenURI(tokenId), pokemonType[tokenId], rarity[tokenId]);
     }
 }
