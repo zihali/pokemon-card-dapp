@@ -31,7 +31,7 @@ pokemon-nft-dapp/
 ### 1. Clone or unzip the project
 
 ```bash
-cd pokemon-nft-dapp
+cd pokemon-card-dapp
 ```
 
 ---
@@ -100,9 +100,23 @@ Visit [http://localhost:3000](http://localhost:3000) and connect your MetaMask w
 
 ## ✨ Features
 
+### Card Minting
 - Mint Pokémon cards with type, rarity, and image (via metadata URI)
-- Set up for fixed-price sales and auctions (code-ready in smart contracts)
-- Modular frontend with React + ethers.js
+- Store metadata on-chain for type and rarity information
+- View your complete card collection in the Gallery
+
+### Marketplace Trading
+- List cards for fixed price sales
+- Create timed auctions for cards
+- Bid on auctions with anti-frontrunning protection
+- Purchase cards directly from the marketplace
+- Secure withdrawal system for sellers and auction participants
+
+### User Experience
+- Intuitive interface for managing cards
+- Real-time updates using blockchain events
+- Mobile-responsive design
+- Wallet connection with MetaMask
 
 ---
 
@@ -124,9 +138,27 @@ npm run build
 
 ## 🔐 Security
 
-- `Ownable` for mint access control
-- `ReentrancyGuard` for safe auctions
-- Smart contract events to power frontend reactivity
+This platform implements several security best practices:
+
+1. **Reentrancy Protection**:
+   - ReentrancyGuard implemented in all value-transferring functions
+   - Use of checks-effects-interactions pattern
+
+2. **Access Control**:
+   - Role-based access with owner and admin roles
+   - Function modifiers to restrict access
+
+3. **Anti-Frontrunning**:
+   - Commit-reveal scheme for auction bids
+   - Time-locked reveals
+
+4. **Emergency Stop**:
+   - Circuit breaker pattern in both contracts
+   - Pausable functionality for emergency situations
+
+5. **Secure Fund Management**:
+   - Pull pattern for withdrawals
+   - Balance updates before transfers
 
 ---
 

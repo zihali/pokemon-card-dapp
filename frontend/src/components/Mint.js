@@ -1,9 +1,12 @@
 import PokemonCard from "../components/PokemonCard";
 
-export default function Mint() {
+export default function Mint({ signer, pokemonContract, marketplaceContract }) {
   return (
     <div style={{ padding: "2rem" }}>
-      <PokemonCard />
+      <PokemonCard 
+        signer={signer} 
+        pokemonContract={pokemonContract} 
+      />
     </div>
   );
 }

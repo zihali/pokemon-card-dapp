@@ -59,6 +59,7 @@ function App() {
           <Route path="/market" element={
             <Market
               signer={signer}
+              pokemonContract={pokemonContract}
               marketplaceContract={marketplaceContract}
             />
           } />
