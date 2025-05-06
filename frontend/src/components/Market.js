@@ -16,6 +16,9 @@ export default function Market({ signer, marketplaceContract, pokemonContract })
   const [bidAmount, setBidAmount] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
 
+  // Use the zero address consistently for ethers.js v6
+  const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
   // Function to fetch active listings
   const fetchListings = async () => {
     if (!signer || !marketplaceContract || !pokemonContract) return;
@@ -25,52 +28,68 @@ export default function Market({ signer, marketplaceContract, pokemonContract })
       
       // We need to listen to past events to get all listings
       // In a real app, you'd use a subgraph or backend API for this
-      const filter = marketplaceContract.filters.Listed();
-      const events = await marketplaceContract.queryFilter(filter);
-      
-      const activeListings = [];
-      
-      for (const event of events) {
-        const { tokenId, seller, price, isAuction } = event.args;
+      try {
+        const filter = marketplaceContract.filters.Listed();
+        const events = await marketplaceContract.queryFilter(filter);
         
-        try {
-          // Check if this listing is still active (not sold or ended)
-          const listing = await marketplaceContract.listings(tokenId);
+        const activeListings = [];
+        
+        for (const event of events) {
+          const { tokenId, seller, price, isAuction } = event.args || {};
           
-          if (listing.seller === ethers.ZeroAddress) {
-            // Listing no longer active
-            continue;
+          if (!tokenId) continue; // Skip if event format doesn't match
+          
+          try {
+            // Check if this listing is still active (not sold or ended)
+            const listing = await marketplaceContract.listings(tokenId);
+            
+            if (listing.seller === ZERO_ADDRESS) {
+              // Listing no longer active
+              continue;
+            }
+            
+            // Get card details
+            let uri, type, rarity;
+            try {
+              [uri, type, rarity] = await pokemonContract.getCardInfo(tokenId);
+            } catch (cardError) {
+              console.error("Error getting card info:", cardError);
+              uri = "https://via.placeholder.com/200?text=Card+Image";
+              type = "Unknown";
+              rarity = "Unknown";
+            }
+            
+            const owner = await pokemonContract.ownerOf(tokenId);
+            
+            // Only add if still owned by the seller (listing not fulfilled yet)
+            if (owner.toLowerCase() === seller.toLowerCase()) {
+              activeListings.push({
+                tokenId: tokenId.toString(),
+                seller,
+                price: ethers.formatEther(price),
+                isAuction,
+                uri,
+                type,
+                rarity,
+                ...(isAuction && {
+                  highestBid: ethers.formatEther(listing.highestBid),
+                  highestBidder: listing.highestBidder,
+                  endTime: new Date(Number(listing.endTime) * 1000).toLocaleString(),
+                  hasEnded: Date.now() > Number(listing.endTime) * 1000
+                })
+              });
+            }
+          } catch (err) {
+            console.error(`Error processing listing for token ${tokenId}:`, err);
+            // Continue to next listing
           }
-          
-          // Get card details
-          const [uri, type, rarity] = await pokemonContract.getCardInfo(tokenId);
-          const owner = await pokemonContract.ownerOf(tokenId);
-          
-          // Only add if still owned by the seller (listing not fulfilled yet)
-          if (owner.toLowerCase() === seller.toLowerCase()) {
-            activeListings.push({
-              tokenId: tokenId.toString(),
-              seller,
-              price: ethers.formatEther(price),
-              isAuction,
-              uri,
-              type,
-              rarity,
-              ...(isAuction && {
-                highestBid: ethers.formatEther(listing.highestBid),
-                highestBidder: listing.highestBidder,
-                endTime: new Date(Number(listing.endTime) * 1000).toLocaleString(),
-                hasEnded: Date.now() > Number(listing.endTime) * 1000
-              })
-            });
-          }
-        } catch (err) {
-          console.error(`Error processing listing for token ${tokenId}:`, err);
-          // Continue to next listing
         }
+        
+        setListings(activeListings);
+      } catch (eventsError) {
+        console.error("Error querying events:", eventsError);
+        setError("Failed to load marketplace events. Check contract connection.");
       }
-      
-      setListings(activeListings);
     } catch (err) {
       console.error("Error fetching listings:", err);
       setError("Failed to load marketplace listings.");
@@ -86,18 +105,52 @@ export default function Market({ signer, marketplaceContract, pokemonContract })
     try {
       const address = await signer.getAddress();
       const balance = await pokemonContract.balanceOf(address);
+      const balanceNumber = Number(balance);
       const cards = [];
       
-      for (let i = 0; i < balance; i++) {
+      for (let i = 0; i < balanceNumber; i++) {
         try {
-          const tokenId = await pokemonContract.tokenOfOwnerByIndex(address, i);
-          const [uri, type, rarity] = await pokemonContract.getCardInfo(tokenId);
+          let tokenId;
+          try {
+            tokenId = await pokemonContract.tokenOfOwnerByIndex(address, i);
+          } catch (indexError) {
+            console.error("Error with tokenOfOwnerByIndex:", indexError);
+            break;
+          }
+
+          let uri, type, rarity;
+          try {
+            [uri, type, rarity] = await pokemonContract.getCardInfo(tokenId);
+          } catch (infoError) {
+            console.error("Error with getCardInfo:", infoError);
+            try {
+              uri = await pokemonContract.tokenURI(tokenId);
+              type = "Unknown";
+              rarity = "Unknown";
+            } catch (uriError) {
+              console.error("Error getting tokenURI:", uriError);
+              uri = "https://via.placeholder.com/200?text=Card+Image";
+              type = "Unknown";
+              rarity = "Unknown";
+            }
+          }
           
           // Check if card is already listed
-          const listing = await marketplaceContract.listings(tokenId);
-          const isListed = listing.seller !== ethers.ZeroAddress;
-          
-          if (!isListed) {
+          try {
+            const listing = await marketplaceContract.listings(tokenId);
+            const isListed = listing.seller !== ZERO_ADDRESS;
+            
+            if (!isListed) {
+              cards.push({
+                tokenId: tokenId.toString(),
+                uri,
+                type,
+                rarity
+              });
+            }
+          } catch (listingError) {
+            console.error("Error checking if card is listed:", listingError);
+            // If we can't check if it's listed, assume it's not listed
             cards.push({
               tokenId: tokenId.toString(),
               uri,
@@ -127,7 +180,8 @@ export default function Market({ signer, marketplaceContract, pokemonContract })
       setStatusMessage("Approving marketplace to transfer your card...");
       
       // First, approve the marketplace to transfer the NFT
-      const approveTx = await pokemonContract.setApprovalForAll(marketplaceContract.target, true);
+      const marketplaceAddress = await marketplaceContract.getAddress();
+      const approveTx = await pokemonContract.setApprovalForAll(marketplaceAddress, true);
       await approveTx.wait();
       
       setStatusMessage("Listing card on marketplace...");
@@ -251,25 +305,45 @@ export default function Market({ signer, marketplaceContract, pokemonContract })
       fetchOwnedCards();
       
       // Set up event listeners for real-time updates
-      const listedFilter = marketplaceContract.filters.Listed();
-      const purchasedFilter = marketplaceContract.filters.Purchased();
-      const bidFilter = marketplaceContract.filters.BidPlaced();
-      const auctionEndedFilter = marketplaceContract.filters.AuctionEnded();
+      let cleanupListeners = () => {};
       
-      marketplaceContract.on(listedFilter, () => fetchListings());
-      marketplaceContract.on(purchasedFilter, () => {
-        fetchListings();
-        fetchOwnedCards();
-      });
-      marketplaceContract.on(bidFilter, () => fetchListings());
-      marketplaceContract.on(auctionEndedFilter, () => {
-        fetchListings();
-        fetchOwnedCards();
-      });
+      try {
+        const listedFilter = marketplaceContract.filters.Listed();
+        const purchasedFilter = marketplaceContract.filters.Purchased();
+        const bidFilter = marketplaceContract.filters.BidPlaced();
+        const auctionEndedFilter = marketplaceContract.filters.AuctionEnded();
+        
+        const handleListed = () => fetchListings();
+        const handlePurchased = () => {
+          fetchListings();
+          fetchOwnedCards();
+        };
+        const handleBid = () => fetchListings();
+        const handleAuctionEnded = () => {
+          fetchListings();
+          fetchOwnedCards();
+        };
+        
+        marketplaceContract.on(listedFilter, handleListed);
+        marketplaceContract.on(purchasedFilter, handlePurchased);
+        marketplaceContract.on(bidFilter, handleBid);
+        marketplaceContract.on(auctionEndedFilter, handleAuctionEnded);
+        
+        cleanupListeners = () => {
+          try {
+            marketplaceContract.off(listedFilter, handleListed);
+            marketplaceContract.off(purchasedFilter, handlePurchased);
+            marketplaceContract.off(bidFilter, handleBid);
+            marketplaceContract.off(auctionEndedFilter, handleAuctionEnded);
+          } catch (err) {
+            console.error("Error removing event listeners:", err);
+          }
+        };
+      } catch (err) {
+        console.error("Error setting up event listeners:", err);
+      }
       
-      return () => {
-        marketplaceContract.removeAllListeners();
-      };
+      return cleanupListeners;
     }
   }, [signer, marketplaceContract, pokemonContract]);
 
@@ -300,6 +374,10 @@ export default function Market({ signer, marketplaceContract, pokemonContract })
                 src={listing.uri}
                 alt={`Card ${listing.tokenId}`}
                 style={{ width: "100%", height: "auto", marginBottom: "0.5rem" }}
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = "https://via.placeholder.com/200?text=Error+Loading";
+                }}
               />
               <p><strong>ID:</strong> {listing.tokenId}</p>
               <p><strong>Type:</strong> {listing.type}</p>
@@ -311,7 +389,7 @@ export default function Market({ signer, marketplaceContract, pokemonContract })
                   <p><strong>Auction</strong></p>
                   <p><strong>Starting Price:</strong> {listing.price} ETH</p>
                   <p><strong>Current Bid:</strong> {listing.highestBid} ETH</p>
-                  {listing.highestBidder !== ethers.ZeroAddress && (
+                  {listing.highestBidder !== ZERO_ADDRESS && (
                     <p><strong>Highest Bidder:</strong> {`${listing.highestBidder.substring(0, 6)}...${listing.highestBidder.substring(38)}`}</p>
                   )}
                   <p><strong>Ends:</strong> {listing.endTime}</p>
@@ -419,6 +497,10 @@ export default function Market({ signer, marketplaceContract, pokemonContract })
                   src={ownedCards.find(card => card.tokenId === selectedCard).uri}
                   alt={`Card ${selectedCard}`}
                   style={{ width: "100%", height: "auto", marginBottom: "0.5rem" }}
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = "https://via.placeholder.com/200?text=Error+Loading";
+                  }}
                 />
               )}
             </div>

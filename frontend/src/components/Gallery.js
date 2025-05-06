@@ -7,22 +7,63 @@ const Gallery = ({ signer, pokemonContract }) => {
 
   const loadCards = async () => {
     try {
-      if (!signer || !pokemonContract) return;
+      if (!signer || !pokemonContract) {
+        setLoading(false);
+        return;
+      }
 
       const address = await signer.getAddress();
       const balance = await pokemonContract.balanceOf(address);
+      const balanceNumber = Number(balance);
       const fetchedCards = [];
 
-      for (let i = 0; i < balance; i++) {
-        const tokenId = await pokemonContract.tokenOfOwnerByIndex(address, i);
-        const [uri, type, rarity] = await pokemonContract.getCardInfo(tokenId);
-        fetchedCards.push({ tokenId, uri, type, rarity });
+      for (let i = 0; i < balanceNumber; i++) {
+        try {
+          // Try to get the token ID - this function might not exist in all ERC721 implementations
+          let tokenId;
+          try {
+            tokenId = await pokemonContract.tokenOfOwnerByIndex(address, i);
+          } catch (indexError) {
+            console.error("Error with tokenOfOwnerByIndex, using fallback method:", indexError);
+            // If this fails, we can't reliably get the tokens, so show an error
+            setError("This NFT contract doesn't support enumeration. Cannot list your NFTs automatically.");
+            break;
+          }
+
+          // Try to get card info
+          let uri, type, rarity;
+          try {
+            [uri, type, rarity] = await pokemonContract.getCardInfo(tokenId);
+          } catch (infoError) {
+            console.error("Error with getCardInfo:", infoError);
+            // Fallback: try to get just the tokenURI
+            try {
+              uri = await pokemonContract.tokenURI(tokenId);
+              type = "Unknown";
+              rarity = "Unknown";
+            } catch (uriError) {
+              console.error("Error getting tokenURI:", uriError);
+              uri = "https://via.placeholder.com/200?text=Card+Image";
+              type = "Unknown";
+              rarity = "Unknown";
+            }
+          }
+
+          fetchedCards.push({ 
+            tokenId: tokenId.toString(), 
+            uri, 
+            type, 
+            rarity 
+          });
+        } catch (err) {
+          console.error("Error processing token:", err);
+        }
       }
 
       setCards(fetchedCards);
     } catch (err) {
       console.error("Error loading cards:", err);
-      setError("Failed to load your NFTs. Check wallet and contract.");
+      setError("Failed to load your NFTs. Check wallet and contract connection.");
     } finally {
       setLoading(false);
     }
@@ -56,8 +97,12 @@ const Gallery = ({ signer, pokemonContract }) => {
                 src={card.uri}
                 alt={`Card ${card.tokenId}`}
                 style={{ width: "100%", height: "auto" }}
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = "https://via.placeholder.com/200?text=Error+Loading";
+                }}
               />
-              <p><strong>ID:</strong> {card.tokenId.toString()}</p>
+              <p><strong>ID:</strong> {card.tokenId}</p>
               <p><strong>Type:</strong> {card.type}</p>
               <p><strong>Rarity:</strong> {card.rarity}</p>
             </div>
